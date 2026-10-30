@@ -84,10 +84,10 @@ $$
 | 本地数据与步数    | 每 Client 2,000 条，1 epoch，250 optimizer steps                                 |
 | Batch             | micro-batch 1；每 prompt 1 条 rollout；梯度累计 8；有效 batch 8                        |
 | Optimizer         | Adafactor，cosine schedule，warmup ratio 0.03，weight decay 0                          |
-| 学习率            | Math：$1\times10^{-6}$；IF/Code：$5\times10^{-6}$                                  |
+| 学习率            | Math：1×10⁻⁶；IF/Code：5×10⁻⁶                                                        |
 | 训练长度          | rollout 最长 1,024 tokens；训练序列最长 4,096 tokens                                   |
-| 蒸馏目标          | 全词表 forward KL，$D_{\mathrm{KL}}(p_T\Vert p_S)$，温度 1.0                             |
-| 聚合              | 三个 Client 样本数相同，故样本加权等价于$1/3$ 等权参数平均                           |
+| 蒸馏目标          | 全词表 forward KL，D_KL(p_T ∥ p_S)，温度 1.0                                         |
+| 聚合              | 三个 Client 样本数相同，故样本加权等价于 1/3 等权参数平均                            |
 | 精度与模型更新    | BF16（硬件支持时），不使用 LoRA，不使用 4-bit 量化                                     |
 | 旧实验中的裁剪    | `max_grad_norm=1.0` 的参数梯度范数裁剪；**没有逐 token pointwise KL clipping** |
 | 评测生成          | 最长 1,024 new tokens；temperature 0.6，top-p 0.95，top-k 20，seed 42                  |
@@ -137,10 +137,10 @@ OPSD 原文的 **Per-Token Pointwise Divergence Clipping** 不是对最终 loss 
 
 $$
 \ell_{n,v}^{(f)}
-=p_T(v\mid x,y^*,\hat y_{<n})
+=p_T(v\mid x,y^*,\hat y_{\lt n})
 f\!\left(
-\frac{p_S(v\mid x,\hat y_{<n})}
-     {p_T(v\mid x,y^*,\hat y_{<n})}
+\frac{p_S(v\mid x,\hat y_{\lt n})}
+     {p_T(v\mid x,y^*,\hat y_{\lt n})}
 \right).
 $$
 
@@ -153,7 +153,7 @@ D_{\mathrm{clip}}^{(f)}(p_T\Vert p_S)
 \min\!\left(\ell_{n,v}^{(f)},\tau\right),
 $$
 
-其中 $\tau>0$ 是 pointwise clipping threshold。计算顺序非常关键：先在每个 $(n,v)$ 上裁剪，再对完整词表 $\mathcal V$ 求和，最后对 rollout 的 $T$ 个位置取平均。
+其中 $\tau\gt 0$ 是 pointwise clipping threshold。计算顺序非常关键：先在每个 $(n,v)$ 上裁剪，再对完整词表 $\mathcal V$ 求和，最后对 rollout 的 $T$ 个位置取平均。
 
 对于本实验使用的 forward KL，$f(r)=-\log r$，因此每个词表项的贡献为
 
@@ -180,8 +180,8 @@ $$
 \frac{\partial\min(\ell_{n,v},\tau)}{\partial\ell_{n,v}}
 =
 \begin{cases}
-1, & \ell_{n,v}<\tau,\\
-0, & \ell_{n,v}>\tau.
+1, & \ell_{n,v}\lt \tau,\\
+0, & \ell_{n,v}\gt \tau.
 \end{cases}
 $$
 
@@ -197,7 +197,7 @@ $$
 - 仍使用 forward KL：$D_{\mathrm{KL}}(p_T\Vert p_S)$，蒸馏温度为 1.1；
 - 对每个 token、每个词表项的贡献
   $p_T(v)[\log p_T(v)-\log p_S(v)]$ 做上界为 0.05 的 pointwise clipping，再对全词表求和并跨 completion token 平均；
-- 蒸馏损失使用**完整词表**，不是 top-$k$ KL，也不是只在 Student 采样 token 上计算的 sampled-token。
+- 蒸馏损失使用**完整词表**，不是 top-k KL，也不是只在 Student 采样 token 上计算的 sampled-token。
 - 全参数 BF16 训练，不使用 LoRA 或量化（OPSD原文使用了LoRA）；AdamW，学习率 $5\times10^{-6}$，参数梯度范数上限 0.1；
 - rollout 最长 1,024 tokens，整体最大长度 20,000 tokens；训练采样 temperature 1.1、top-p 0.95、top-k 20；
 - 训练后在 AIME25/AIME26 上做 Avg@12：每题独立生成 12 次。该评测仍沿用当前工程的 thinking-off、temperature 0.6 和最多 1,024 new tokens。
@@ -227,11 +227,11 @@ Rethinking Multi-Teacher Self-Distillation：Rethinking Self-Distillation for Mu
 | 论文                                       | 核心问题                                                             | 核心机制                                                        | 最重要的工程结论                                                         |
 | ------------------------------------------ | -------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | FedAvg                                     | 如何在数据不出端的条件下降低联邦训练通信轮数                         | 客户端多步本地 SGD，服务端按样本量加权平均                      | 本地计算可以换通信，但本地步数过大可能导致平台期或发散                   |
-| FedZGE                                     | 无公共数据、服务端又看不到客户端模型时，如何做数据自由联邦蒸馏       | 在输入空间做零阶梯度估计来训练生成器                            | 扰动方向数$q$ 是精度与通信量的直接旋钮                                 |
+| FedZGE                                     | 无公共数据、服务端又看不到客户端模型时，如何做数据自由联邦蒸馏       | 在输入空间做零阶梯度估计来训练生成器                            | 扰动方向数 q 是精度与通信量的直接旋钮                                  |
 | OPSD                                       | 不引入外部教师，模型能否利用答案作为特权信息自我蒸馏                 | 同一模型同时充当冻结教师和可训练学生；教师多看参考解            | 前向 KL、全词表蒸馏、逐位置逐词表项 clipping 是关键                      |
 | MOPD                                       | 如何把多个领域 RL 专家的能力合并回一个模型                           | 学生自己 rollout，按领域路由到冻结教师，以逐 token 反向 KL 学习 | 同源教师显著更稳；异步 teacher prefill 可隐藏大部分额外时延              |
 | GATES                                      | 没有验证标签时，如何从“有文档”的同模型教师向“无文档”学生可靠迁移 | 多次教师采样形成共识门控，再做轨迹蒸馏                          | 共识门控和完整推理轨迹比答案监督或稀疏 outcome reward 更重要             |
-| Rethinking OPD                             | OPD 何时成功、token 级机制是什么、失败后怎样补救                     | 研究 top-$k$ 重叠、优势和熵差的训练动态                       | 教师强不等于可蒸馏；先做 off-policy 冷启动、匹配教师提示，并控制长轨迹   |
+| Rethinking OPD                             | OPD 何时成功、token 级机制是什么、失败后怎样补救                     | 研究 top-k 重叠、优势和熵差的训练动态                       | 教师强不等于可蒸馏；先做 off-policy 冷启动、匹配教师提示，并控制长轨迹   |
 | Rethinking Multi-Teacher Self-Distillation | MOPD 是否稳定优于认真调过的离线基线                                  | 在统一数据、独立调参和 GPU-hours 口径下重测 SFT/Soft-KD/OPD     | 未发现 MOPD 的稳定精度优势；Qwen3-8B 上全预算成本是 SFT 的 14.8–23.1 倍 |
 
 ---
@@ -358,7 +358,7 @@ Figure 1 和 Figure 2 给出了 OPSD 的核心：**teacher 和 student 是同一
 - 学生只看问题 $x$：$p_S(\cdot\mid x)=p_\theta(\cdot\mid x)$。
 - 教师多看标准答案/参考推理 $y^\star$：$p_T(\cdot\mid x,y^\star)=p_\theta(\cdot\mid x,y^\star)$。
 - 学生先按当前策略生成 on-policy 轨迹 $\hat y\sim p_S(\cdot\mid x)$。
-- 对学生轨迹中的每个前缀 $\hat y_{<n}$，学生和教师都计算下一 token 分布；教师通过一次带参考解的 prefill 获得“特权信息”，不单独生成一条轨迹。
+- 对学生轨迹中的每个前缀 $\hat y_{\lt n}$，学生和教师都计算下一 token 分布；教师通过一次带参考解的 prefill 获得“特权信息”，不单独生成一条轨迹。
 - 更新时仅对学生分支反向传播，教师分布 `stop-gradient`，在本次更新中充当冻结目标。两者长期仍共享同一组不断更新的参数。
 
 ![OPSD Figure 1：同一模型的特权信息自蒸馏](img/opsd_figure1.png)
@@ -370,8 +370,8 @@ Figure 1 和 Figure 2 给出了 OPSD 的核心：**teacher 和 student 是同一
 $$
 D(p_T\Vert p_S)(\hat y\mid x)=
 \frac{1}{|\hat y|}\sum_{n=1}^{|\hat y|}
-D\!\left(p_T(\cdot\mid x,y^\star,\hat y_{<n})\,
-\Vert\,p_S(\cdot\mid x,\hat y_{<n})\right),
+D\!\left(p_T(\cdot\mid x,y^\star,\hat y_{\lt n})\,
+\Vert\,p_S(\cdot\mid x,\hat y_{\lt n})\right),
 $$
 
 $$
@@ -414,9 +414,9 @@ Figure 4 显示，不做这个 clipping 时 Qwen3-1.7B 的 AIME24 性能会在�
 - 模型：Qwen3-1.7B/4B/8B Instruct。
 - 数据：OpenThoughts 数学子集，最多 30K 个带 CoT 的问题—解答对。
 - 主配置：学生 Thinking Mode off、教师 Thinking Mode on；全词表 logit distillation；LoRA rank 64、alpha 128，作用于 q/k/v/o、gate/up/down projection。
-- OPSD：学习率 (5\times10^{-6})，有效 batch 32，最大 completion 1,024，单 prompt 1 个 rollout，温度 1.1，共 100 步。
+- OPSD：学习率 $5\times10^{-6}$，有效 batch 32，最大 completion 1,024，单 prompt 1 个 rollout，温度 1.1，共 100 步。
 - GRPO：同学习率和 batch，最大 completion 16,000，每 prompt 8 个 rollout，温度 1.2，共 500 步。
-- SFT：学习率 (5\times10^{-6})，有效 batch 32，最大序列 16,000，100 步。
+- SFT：学习率 $5\times10^{-6}$，有效 batch 32，最大序列 16,000，100 步。
 - 优化：AdamW、BF16、gradient checkpointing、FlashAttention 2。
 - 硬件：所有实验使用 **8 张 A100 或 H100**；论文没有逐项说明某一具体 run 用 A100 还是 H100，也未给 wall-clock/GPU-hours。
 - 评估：max new tokens 38,912，temperature 1.0，top-p 0.95，每题 12 个样本，报告 Avg@12。
@@ -460,9 +460,9 @@ $$
 L_{\mathrm{revKL}}=
 \mathbb E_{x,y\sim\pi_\theta}
 \left[\frac{1}{|y|}\sum_t\sum_v
-\pi_\theta(v\mid x,y_{<t})
-\log\frac{\pi_\theta(v\mid x,y_{<t})}
-{\pi_{\phi_d}(v\mid x,y_{<t})}\right].
+\pi_\theta(v\mid x,y_{\lt t})
+\log\frac{\pi_\theta(v\mid x,y_{\lt t})}
+{\pi_{\phi_d}(v\mid x,y_{\lt t})}\right].
 $$
 
 论文给出两种实现。
@@ -474,7 +474,7 @@ $$
 $$
 
 并把优势双边 clip 到 $[-A_{\max},A_{\max}]$。这可以直接接入 PPO/GRPO。
-- **Teacher top-$k$ 形式**：在教师 top-$k$ token 上蒸馏，默认 $k=64$。论文额外加入 $\pi_{\phi_d}(v)-\pi_\theta(v)$ 修正项，保证截断目标仍在 top-$k$ 上以师生相等为最优点；同时避免传输全词表 logits。
+- **Teacher top-k 形式**：在教师 top-k token 上蒸馏，默认 $k=64$。论文额外加入 $\pi_{\phi_d}(v)-\pi_\theta(v)$ 修正项，保证截断目标仍在 top-k 上以师生相等为最优点；同时避免传输全词表 logits。
 
 ### 工程实现
 
@@ -482,7 +482,7 @@ $$
 - Qwen3-30B-A3B 实验在三个领域： Math、Instruction Following、SWE。Math/IF 最大长度 32,768；SWE 最大长度 65,536、最多 50 轮交互。
 - 每领域 RL：GRPO + Dynamic Sampling，学习率 $3\times10^{-6}$；Math/IF batch 144、每 prompt 8 个 rollout、约 175K 序列；SWE batch 80、8 rollout、约 150K 序列。
 - Mix-RL：学习率 $4\times10^{-6}$，batch 256，8 rollout；Math:IF:SWE 比例 0.35:0.35:0.30。
-- MOPD：不使用 Dynamic Sampling，batch 2,048，每 prompt 1 个 rollout，同样的领域比例；PG 优势 clip 上限 5，top-$k$ 默认 64。
+- MOPD：不使用 Dynamic Sampling，batch 2,048，每 prompt 1 个 rollout，同样的领域比例；PG 优势 clip 上限 5，top-k 默认 64。
 - 评估：AIME25/26 每题 32 个样本并报告 avg@32；IF 和 SWE 每题一次；temperature 1.0，不做 top-p/top-k 截断。
 - 论文没有披露 GPU 型号、数量、训练时长或 MOPD 学习率；因此无法仅凭论文对成本进行复算。
 
@@ -516,7 +516,7 @@ $$
 
 原论文 Table 3 将完整 MOPD 流程扩展到 MiMo-V2-Flash。这里的 Teacher 仍表示每个 benchmark 所对应的领域 RL 教师；Δ 为 MOPD 相对该教师的差值。
 
-| 方法                | AIME25 | HMMT25 |  LCB | IFBench | SWE-Bench V. | $\tau^2$-Bench | $\tau^2$-Telecom |
+| 方法                | AIME25 | HMMT25 |  LCB | IFBench | SWE-Bench V. | τ²-Bench | τ²-Telecom |
 | ------------------- | -----: | -----: | ---: | ------: | -----------: | ---------------: | -----------------: |
 | Student             |   89.3 |   76.9 | 77.5 |    55.4 |         67.8 |             75.9 |               92.7 |
 | Teacher             |   93.9 |   82.6 | 82.6 |    68.9 |         74.2 |             79.6 |               95.0 |
@@ -529,19 +529,19 @@ $$
 
 #### 蒸馏目标与教师分布对齐消融
 
-原论文 Table 4 比较 policy-gradient 与 top-$k$ 两种实现，并把默认的同源 RL 数学教师替换为更强但分布不同的 Qwen3-235B-A22B。表中其余 IF/SWE 教师、数据和超参数保持不变。
+原论文 Table 4 比较 policy-gradient 与 top-k 两种实现，并把默认的同源 RL 数学教师替换为更强但分布不同的 Qwen3-235B-A22B。表中其余 IF/SWE 教师、数据和超参数保持不变。
 
 | Math Teacher    | Loss Variant           | AIME25 | AIME26 | IFBench | IFEval | SWE-bench Verified | Norm. score |
 | --------------- | ---------------------- | -----: | -----: | ------: | -----: | -----------------: | ----------: |
 | RL Teacher      | Policy gradient        |  51.46 |  65.31 |   77.89 |  93.84 |              50.40 |      0.9373 |
-| RL Teacher      | Top-$k$ distillation |  51.77 |  64.79 |   75.85 |  93.07 |              50.20 |      0.9093 |
+| RL Teacher      | Top-k distillation |  51.77 |  64.79 |   75.85 |  93.07 |              50.20 |      0.9093 |
 | Qwen3-235B-A22B | Policy gradient        |  45.63 |  51.56 |   79.25 |  93.99 |              50.60 |      0.6003 |
-| Qwen3-235B-A22B | Top-$k$ distillation |   0.94 |   0.42 |   72.96 |  88.97 |              51.20 |    −1.1898 |
+| Qwen3-235B-A22B | Top-k distillation |   0.94 |   0.42 |   72.96 |  88.97 |              51.20 |    −1.1898 |
 
 *表：MOPD 原论文 Table 4。使用同源教师时两种目标接近；换成异源 235B 数学教师后，policy-gradient 明显退化，top-k 蒸馏在数学任务上几乎完全坍塌。*
 
-- 同源教师是稳定性的核心。把数学教师从同源 RL expert 换成更强但分布不同的 Qwen3-235B-A22B 后，初始逐 token KL 从约 0.04 升到约 0.19；PG 版本逐渐退化，top-$k$ 版本约 step 18 灾难性坍塌。**教师绝对能力更强，不代表更适合做 OPD 教师。**
-- 同源条件下 PG 与 top-$k$ 接近：归一化分数 0.9373 vs. 0.9093；top-$k$ 并没有自动带来更稳或更高精度。
+- 同源教师是稳定性的核心。把数学教师从同源 RL expert 换成更强但分布不同的 Qwen3-235B-A22B 后，初始逐 token KL 从约 0.04 升到约 0.19；PG 版本逐渐退化，top-k 版本约 step 18 灾难性坍塌。**教师绝对能力更强，不代表更适合做 OPD 教师。**
+- 同源条件下 PG 与 top-k 接近：归一化分数 0.9373 vs. 0.9093；top-k 并没有自动带来更稳或更高精度。
 
 ![MOPD Figure 3：同源教师与异源强教师的训练动态](img/mopd_figure3_teacher_alignment.png)
 
@@ -569,7 +569,7 @@ $$
 L_{\mathrm{off}}(\theta)=
 -\frac{1}{\sum_{i,j}g_ie_{i,j}L_{i,j}^{(T)}}
 \sum_{i,j}g_ie_{i,j}\sum_t
-\log\pi_\theta(y_{i,j,t}^{(T)}\mid y_{i,j,<t}^{(T)},q_i).
+\log\pi_\theta(y_{i,j,t}^{(T)}\mid y_{i,j,\lt t}^{(T)},q_i).
 $$
 
 其中 $g_i$ 是问题级共识门，$e_{i,j}$ 是轨迹级资格门。不达共识的问题整题 loss 为零。
@@ -578,8 +578,8 @@ Figure 3 给出辅助的 on-policy 路径：学生自己生成轨迹，教师在
 
 $$
 A_t=\mathrm{clip}\bigl(
-\log\pi_T(y_t^{(S)}\mid y_{<t}^{(S)},d,q)
--\log\pi_\theta(y_t^{(S)}\mid y_{<t}^{(S)},q),[-a,a]\bigr),
+\log\pi_T(y_t^{(S)}\mid y_{\lt t}^{(S)},d,q)
+-\log\pi_\theta(y_t^{(S)}\mid y_{\lt t}^{(S)},q),[-a,a]\bigr),
 $$
 
 再做 advantage-weighted log-likelihood。总目标是
@@ -599,7 +599,7 @@ $$
 - 数据：从 Nemotron-CC-Math 文档出发，用 Qwen2.5-32B-Instruct 生成问题。构造数据时要求 8 次 tutor rollout 至少 5 次一致，得到 551 个训练问题和 50 个 held-out 问题；实际训练时的在线 gate 阈值是至少 4/8。
 - 每步 32 个问题，每题 8 条 tutor + 8 条 student rollout，只训练 1 个 epoch；训练温度 0.5，最大 completion 512。
 - 默认 $\lambda_{off}=1.0,\lambda_{on}=0.1,\lambda_{cons}=0,\lambda_{KL}=0.02$，优势 clip 为 ±5。
-- AdamW，学习率 (10^{-6})，weight decay 0.01，gradient clipping 1.0。
+- AdamW，学习率 $10^{-6}$，weight decay 0.01，gradient clipping 1.0。
 - 只在 completion token 上计算 loss，prompt token mask 掉；教师/学生 prompt 结构同构，只差文档；必须成功解析最后一个 boxed answer；显式提到“document/passage/text”的题目或轨迹会被过滤。
 - 论文没有披露 GPU 型号、数量、训练时长或是否使用参数高效微调。
 
@@ -630,9 +630,9 @@ L_{\mathrm{OPD}}(\theta)=
 \left[\sum_tD_{\mathrm{KL}}(p_t\Vert q_t)\right],
 $$
 
-其中 $p_t$ 是学生在自己前缀上的分布，$q_t$ 是教师在同一前缀上的分布。论文同时分析 sampled-token、full-vocabulary 和 student top-$k$ 三种粒度，并定义三个动态指标：
+其中 $p_t$ 是学生在自己前缀上的分布，$q_t$ 是教师在同一前缀上的分布。论文同时分析 sampled-token、full-vocabulary 和 student top-k 三种粒度，并定义三个动态指标：
 
-1. **Top-$k$ overlap ratio**：师生高概率候选 token 集的交集比例。
+1. **Top-k overlap ratio**：师生高概率候选 token 集的交集比例。
 2. **Overlap-token advantage**：在交集 token 内，教师相对学生的偏好差异；趋近 0 代表校准接近。
 3. **Entropy gap**：$|H(q_t)-H(p_t)|$，衡量同一状态下不确定性是否匹配。
 
@@ -649,18 +649,18 @@ $$
 
 ### 工程实现
 
-- 默认 OPD：global/mini batch 64，4 个 rollout，student top-16，temperature 1.0，top-p 1.0，最大 prompt 1,024、response 7,168，学习率 (10^{-6})，1 epoch，不加 KL regularization。
+- 默认 OPD：global/mini batch 64，4 个 rollout，student top-16，temperature 1.0，top-p 1.0，最大 prompt 1,024、response 7,168，学习率 $10^{-6}$，1 epoch，不加 KL regularization。
 - 主评估：AIME24、AIME25、AMC23；每题 16 次，temperature 0.7、top-p 0.95、最大验证长度 31,744，报告 avg@16。
-- 训练教师 Qwen3-4B-Base-GRPO 时使用 8 张 A800 80GB，1 epoch，batch/micro-batch 64，8 rollout，最大 response 7,168，学习率 (10^{-6})。论文没有明确披露所有 OPD run 的 GPU 型号/数量。
-- Off-policy 冷启动：Qwen3-4B 教师为 OpenThoughts3 数学 prompt 生成 200K 条轨迹；Qwen3-1.7B-Base 做 full-parameter SFT，1 epoch，长度 14,336，每设备 batch 8，学习率 (10^{-5})，cosine，warmup 0.05，BF16；SFT 的 GPU 数未披露。
+- 训练教师 Qwen3-4B-Base-GRPO 时使用 8 张 A800 80GB，1 epoch，batch/micro-batch 64，8 rollout，最大 response 7,168，学习率 $10^{-6}$。论文没有明确披露所有 OPD run 的 GPU 型号/数量。
+- Off-policy 冷启动：Qwen3-4B 教师为 OpenThoughts3 数学 prompt 生成 200K 条轨迹；Qwen3-1.7B-Base 做 full-parameter SFT，1 epoch，长度 14,336，每设备 batch 8，学习率 $10^{-5}$，cosine，warmup 0.05，BF16；SFT 的 GPU 数未披露。
 
 ### 实验结果和分析
 
 #### 成功机制
 
-成功的 JustRL-1.5B → R1-Distill-1.5B 蒸馏中，overlap ratio 从约 72% 稳步升到 91% 以上，熵差缩小；失败的 R1-Distill-7B 教师曲线基本停滞。两者共同的 top-$k$ token 承担了师生 97%–99% 的概率质量。
+成功的 JustRL-1.5B → R1-Distill-1.5B 蒸馏中，overlap ratio 从约 72% 稳步升到 91% 以上，熵差缩小；失败的 R1-Distill-7B 教师曲线基本停滞。两者共同的 top-k token 承担了师生 97%–99% 的概率质量。
 
-只优化师生 top-$k$ 交集，效果几乎等同完整 student top-$k$；只优化非交集明显更差。这说明 reverse KL 的有效作用位置是“双方已经共同认为可能”的高概率 token，训练进一步把质量集中到教师更偏好的那些 token，形成自增强循环。
+只优化师生 top-k 交集，效果几乎等同完整 student top-k；只优化非交集明显更差。这说明 reverse KL 的有效作用位置是“双方已经共同认为可能”的高概率 token，训练进一步把质量集中到教师更偏好的那些 token，形成自增强循环。
 
 ![Rethinking OPD Figure 6：成功与失败 OPD 的训练动态](img/rethinking_opd_figure6_dynamics.png)
 
@@ -675,7 +675,7 @@ $$
 
 - 最大 response 长度存在甜点区：0.5K/1K 的监督太少，3K/7K 最好，10K/15K 后期会出现 overlap 下降、熵和梯度范数尖峰。
 - 不稳定首先发生在序列尾部，再向前传播。教师从学生前缀继续作答的准确率增益随前缀长度从 1K 的 +0.366 降到 16K 的 +0.024，说明教师在深层 student-visited states 上也逐渐失去可靠性。
-- sampled-token OPD 已能达到与 top-$k$ 接近的结果；top-1 较不稳，top-4 后收益已趋于饱和，top-16/64 更平滑但计算更贵。这与 OPSD 的“全词表更好”并不直接矛盾：OPSD 是同模型特权上下文、前向 KL；本文主要研究外部/同族教师、反向 KL，监督几何不同。
+- sampled-token OPD 已能达到与 top-k 接近的结果；top-1 较不稳，top-4 后收益已趋于饱和，top-16/64 更平滑但计算更贵。这与 OPSD 的“全词表更好”并不直接矛盾：OPSD 是同模型特权上下文、前向 KL；本文主要研究外部/同族教师、反向 KL，监督几何不同。
 
 ![Rethinking OPD Figure 11：响应长度与教师续写质量](img/rethinking_opd_figure11_length.png)
 
@@ -718,7 +718,7 @@ $$
 - 两种教师组合：MIA（Math + Instruction Following + agentic InterCode-SQL）和 Agent×3（ALFWorld + WebShop + InterCode-SQL）。
 - 教师训练：数学用 DAPO，指令用 GRPO，agent 用 GiGPO；另与 joint Mix-RL 和多种 weight merging 比较。
 - 每个蒸馏方法独立训练 5 epoch，并独立扫最多 5 个学习率；最多 160 个 method × model × setting 配置，随后再做 seed 复验。每个训练 run 使用 **8 张 B200**。
-- Qwen3-8B 选中学习率：MIA 下 SFT/Soft-KD/Offline-MOPD/MOPD 分别为 (5,6.3,1,3\times10^{-6})；Agent×3 下为 (5,5,3,3\times10^{-6})。对应 batch：MIA 32/32/24/96；Agent×3 32/32/40/40。
+- Qwen3-8B 选中学习率：MIA 下 SFT/Soft-KD/Offline-MOPD/MOPD 分别为 $(5,6.3,1,3)\times10^{-6}$；Agent×3 下为 $(5,5,3,3)\times10^{-6}$。对应 batch：MIA 32/32/24/96；Agent×3 32/32/40/40。
 - 工具栈：SFT/Soft-KD 用 TRL；Offline-MOPD/MOPD/教师 RL 用 verl，多轮任务用 verl-agent；学生 rollout 和教师评分用 vLLM。
 - 每个方法报告 3 个训练种子；base/teacher/merge 报 3 个评估种子。训练、验证、测试严格分开，并按验证集的多领域平均分选择 checkpoint。
 
@@ -803,11 +803,11 @@ $$
 在轨迹的第 $n$ 个位置，Student 和 privileged Teacher 的完整词表分布分别记为
 
 $$
-p_n(v)=p_\theta(v\mid x,\hat y_{<n}),
+p_n(v)=p_\theta(v\mid x,\hat y_{\lt n}),
 $$
 
 $$
-q_n^+(v)=p_{\bar\theta}(v\mid x,z,\hat y_{<n}),
+q_n^+(v)=p_{\bar\theta}(v\mid x,z,\hat y_{\lt n}),
 $$
 
 其中 $\bar\theta$ 表示不接收梯度的 Teacher 参数。Forward-KL 中位置 $n$、词表项 $v$ 的 pointwise contribution 为
@@ -835,7 +835,7 @@ $$
 $$
 \tau^*
 =\arg\max_{\tau\in\mathcal T}
-\operatorname{Score}\bigl(\Theta(\tau);\mathcal D_{\mathrm{val}}\bigr),
+\mathrm{Score}\bigl(\Theta(\tau);\mathcal D_{\mathrm{val}}\bigr),
 $$
 
 其中可以先取
@@ -881,7 +881,7 @@ $$
 
 $$
 r_{\mathrm{clip}}
-=\frac{\sum_{n,v}\mathbb I[c_{n,v}>\tau]}{T|\mathcal V|},
+=\frac{\sum_{n,v}\mathbb I[c_{n,v}\gt \tau]}{T|\mathcal V|},
 $$
 
 以及被裁剪掉的正贡献质量
@@ -900,7 +900,7 @@ $$
 
 $$
 q_n^0(v)
-=p_{\bar\theta}(v\mid x,\hat y_{<n}).
+=p_{\bar\theta}(v\mid x,\hat y_{\lt n}).
 $$
 
 $q_n^+$ 和 $q_n^0$ 必须使用相同权重、thinking mode、system prompt 和输出格式，唯一差异应当是是否提供 $z$；否则测到的可能只是提示模板或生成风格差异。
@@ -920,7 +920,7 @@ w_n
 \sigma\!\left(\frac{g_n-\gamma}{s}\right),
 $$
 
-其中 $w_{\min}>0$ 防止低信息位置完全失去学习信号，$\gamma$ 控制开始增强的位置，$s$ 控制门控平滑程度。带归一化的训练目标为
+其中 $w_{\min}\gt 0$ 防止低信息位置完全失去学习信号，$\gamma$ 控制开始增强的位置，$s$ 控制门控平滑程度。带归一化的训练目标为
 
 $$
 \mathcal L_{\mathrm{PI}}
@@ -976,12 +976,12 @@ $$
 
 $$
 s_n^A(v)
-=p_{\theta_A}(v\mid x,\hat y^A_{<n}),
+=p_{\theta_A}(v\mid x,\hat y^A_{\lt n}),
 $$
 
 $$
 q_n^{B\rightarrow A}(v)
-=p_{\bar\theta_B}(v\mid x,z,\hat y^A_{<n}).
+=p_{\bar\theta_B}(v\mid x,z,\hat y^A_{\lt n}).
 $$
 
 对应损失为
