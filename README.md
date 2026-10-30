@@ -133,15 +133,20 @@ $$
 
 然后跨 token 求平均，没有在词表贡献项或逐 token 层面对极端 divergence 做截断。少数异常大的 Teacher–Student 差异因此可能主导一次更新，特别是在 Student 已生成错误前缀、长序列后部或三个领域分布差异较大时。
 
-OPSD 原文的 **Per-Token Pointwise Divergence Clipping** 不是对最终 loss 或参数梯度做裁剪，而是在每个生成位置 $n$ 上，先分别裁剪词表中每个候选 token $v$ 的 divergence contribution。对一般的 $f$ -divergence，原文把位置 $n$ 、词表项 $v$ 的点贡献定义为
+OPSD 原文的 **Per-Token Pointwise Divergence Clipping** 不是对最终 loss 或参数梯度做裁剪，而是在每个生成位置 $n$ 上，先分别裁剪词表中每个候选 token $v$ 的 divergence contribution。为避免在公式中重复很长的条件，令 $z$ 表示参考答案等特权信息，并记
+
+$$
+q_{n,v}=p_{T}(v\mid x,z,\hat y_{1:n-1}),
+\qquad
+s_{n,v}=p_{S}(v\mid x,\hat y_{1:n-1}).
+$$
+
+对一般的 $f$ -divergence，位置 $n$、词表项 $v$ 的 pointwise contribution 定义为
 
 $$
 \ell_{n,v}^{(f)}
-=p_{T}(v\mid x,y^{*},\hat y_{\lt n})
-f\!\left(
-\frac{p_{S}(v\mid x,\hat y_{\lt n})}
-     {p_{T}(v\mid x,y^{*},\hat y_{\lt n})}
-\right).
+=q_{n,v}
+f\left(\frac{s_{n,v}}{q_{n,v}}\right).
 $$
 
 令学生 rollout 的长度为 $T=|\hat y|$ ，裁剪后的轨迹损失为
